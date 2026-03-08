@@ -1,0 +1,10 @@
+Gradient descent is an optimization method used during machine learning training.
+The model first makes a prediction from its current parameters.
+Then it compares that prediction to the true answer and computes a loss value.
+The gradient tells the model which direction would reduce the loss.
+The learning rate controls how large the update step should be.
+If the learning rate is too large, the model may overshoot the best answer.
+If the learning rate is too small, training can become very slow.
+Mean squared error is common for regression tasks.
+Cross-entropy loss is common for classification tasks.
+Good training behavior usually shows loss moving downward over time.

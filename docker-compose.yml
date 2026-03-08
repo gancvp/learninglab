@@ -1,0 +1,106 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_OLLAMA_BASE_URL: ${NEXT_PUBLIC_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      NEXT_PUBLIC_OLLAMA_MODEL: ${NEXT_PUBLIC_OLLAMA_MODEL:-llama3.2:3b}
+      NEXT_PUBLIC_OLLAMA_TEMPERATURE: ${NEXT_PUBLIC_OLLAMA_TEMPERATURE:-0.3}
+      JUDGE0_BASE_URL: ${JUDGE0_BASE_URL:-http://judge0:2358}
+      JUDGE0_AUTH_TOKEN: ${JUDGE0_AUTH_TOKEN:-}
+      JUDGE0_POLL_INTERVAL_MS: ${JUDGE0_POLL_INTERVAL_MS:-1000}
+      JUDGE0_MAX_POLL_ATTEMPTS: ${JUDGE0_MAX_POLL_ATTEMPTS:-20}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_learning_lab
+    depends_on:
+      postgres:
+        condition: service_healthy
+      judge0:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${POSTGRES_EXPOSED_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_learning_lab
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_learning_lab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  adminer:
+    image: adminer:4
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  judge0:
+    image: judge0/judge0:latest
+    platform: ${JUDGE0_PLATFORM:-linux/amd64}
+    ports:
+      - "${JUDGE0_PORT:-2358}:2358"
+    volumes:
+      - ./docker/judge0/judge0.conf:/judge0.conf:ro
+    privileged: true
+    depends_on:
+      judge0-db:
+        condition: service_started
+      judge0-redis:
+        condition: service_started
+    restart: unless-stopped
+
+  judge0-worker:
+    image: judge0/judge0:latest
+    platform: ${JUDGE0_PLATFORM:-linux/amd64}
+    command: ["./scripts/workers"]
+    volumes:
+      - ./docker/judge0/judge0.conf:/judge0.conf:ro
+    privileged: true
+    depends_on:
+      judge0-db:
+        condition: service_started
+      judge0-redis:
+        condition: service_started
+    restart: unless-stopped
+
+  judge0-db:
+    image: postgres:16.2
+    env_file:
+      - ./docker/judge0/judge0.conf
+    volumes:
+      - judge0_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  judge0-redis:
+    image: redis:7.2.4
+    env_file:
+      - ./docker/judge0/judge0.conf
+    command:
+      [
+        "bash",
+        "-c",
+        "docker-entrypoint.sh --appendonly no --requirepass \"$$REDIS_PASSWORD\"",
+      ]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  judge0_postgres_data:
